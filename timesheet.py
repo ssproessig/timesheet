@@ -54,7 +54,8 @@ def _open_browser(e, msg):
 
 
 class CalendarEntry:
-    def __init__(self, entry_id, start, end, summary, description, location):
+    def __init__(self, entry_id, start, end, summary, description, location,
+                 link):
         def to_datetime(s):
             global date_time_re
             inp = s["dateTime"]
@@ -73,6 +74,7 @@ class CalendarEntry:
         self.summary = summary
         self.description = description
         self.location = location
+        self.link = link
 
 
 class Project:
@@ -125,7 +127,7 @@ class TimeSheet:
         # user info
         self.user = None
         self.title = None
-        with open("user.json", 'r') as fp:
+        with open("user.json", 'r', encoding='utf-8') as fp:
             user_data = json.load(fp)
             self.user = user_data["user"]
             self.title = user_data["title"]
@@ -204,6 +206,9 @@ class TimeSheet:
                     except KeyError:
                         return ""
 
+                if entry['status'] != 'confirmed':
+                    continue
+
                 project = entry_re.fullmatch(entry["summary"])
                 if project is None:
                     summary = entry["summary"]
@@ -218,7 +223,8 @@ class TimeSheet:
                                     entry["end"],
                                     summary,
                                     opt_arg("description"),
-                                    opt_arg("location")), key, entry
+                                    opt_arg("location"),
+                                    entry["htmlLink"]), key, entry
 
             page_token = event_list.get('nextPageToken')
             if not page_token:
@@ -239,6 +245,8 @@ class TimeSheet:
                             help='The name of the calendar to search.')
         parser.add_argument('--database', default='projects.sqlite',
                             help='The project database.')
+        parser.add_argument('--link', action='store_true',
+                            help='Make description a hyperlink.')
         parser.add_argument('--xslt', default='CreateReport.xslt',
                             help='The style sheet to use.')
         return parser
@@ -270,6 +278,8 @@ class TimeSheet:
                             "to": e.end.strftime(TIME_FORMAT),
                             "minutes": str((e.end - e.start).seconds // 60),
                             "subject": e.summary})
+                if self.arguments.link:
+                    entry.attrib["link"] = e.link
                 if len(e.description) > 0:
                     etree.SubElement(entry, "details").text = e.description
 
@@ -284,7 +294,7 @@ class TimeSheet:
             if key is None:
                 error_callback(entry,
                                "Malformed timesheet entry: %s" %
-                               entry.summary)
+                               entry['summary'])
                 key = "unknown"
             else:
                 try:
